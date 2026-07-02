@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日本 航空気象ダッシュボード | METAR / TAF</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #171f30;
+    --panel2: #1e2740;
+    --border: #2b3552;
+    --text: #e6ebf5;
+    --muted: #8a94ab;
+    --vfr: #2ecc71;
+    --mvfr: #3498db;
+    --ifr: #e74c3c;
+    --lifr: #c471ed;
+    --unk: #6b7488;
+    --accent: #4fd1c5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0b0f18, #0f1420 200px);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(15,20,32,0.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  .notice {
+    margin-top: 10px; padding: 9px 14px; border-radius: 8px; font-size: 12.5px; line-height: 1.6;
+    background: rgba(138,109,59,0.18); border: 1px solid #8a6d3b; color: #f0e2c4;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+  .notice .icon { flex: 0 0 auto; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin-top: 10px;
+  }
+  input[type="text"] {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; min-width: 220px;
+  }
+  select {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 10px; border-radius: 8px; font-size: 13px;
+  }
+  button {
+    background: var(--accent); color: #06201c; border: none; font-weight: 600;
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary {
+    background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 500;
+  }
+  .status-line { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .status-line strong { color: var(--text); }
+  #errorBanner {
+    display: none; margin: 10px 20px 0; padding: 10px 14px; background: #3a1c22; border: 1px solid #7a2e3a;
+    border-radius: 8px; color: #ffb4b4; font-size: 13px;
+  }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; padding: 10px 20px 0; font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  main { padding: 16px 20px 60px; }
+  #grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+    border-left: 4px solid var(--unk);
+  }
+  .card.VFR { border-left-color: var(--vfr); }
+  .card.MVFR { border-left-color: var(--mvfr); }
+  .card.IFR { border-left-color: var(--ifr); }
+  .card.LIFR { border-left-color: var(--lifr); }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .icao { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+  .name { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .badge {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; color: #06201c; white-space: nowrap;
+  }
+  .badge.VFR { background: var(--vfr); }
+  .badge.MVFR { background: var(--mvfr); color: #06121f; }
+  .badge.IFR { background: var(--ifr); color: #200606; }
+  .badge.LIFR { background: var(--lifr); color: #1f0620; }
+  .badge.UNK { background: var(--unk); color: #fff; }
+  .facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; font-size: 12px; color: var(--muted); margin: 10px 0; }
+  .facts b { color: var(--text); font-weight: 600; }
+  .raw {
+    background: #0c111d; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    font-family: "SFMono-Regular", Consolas, monospace; font-size: 11.5px; line-height: 1.5; color: #c7d3ea;
+    white-space: pre-wrap; word-break: break-word; margin-top: 6px;
+  }
+  .section-label { font-size: 11px; color: var(--muted); margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .empty-state, .loading-state { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
+  footer { text-align: center; color: var(--muted); font-size: 11.5px; padding: 20px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🇯🇵 日本 航空気象ダッシュボード</h1>
+  <div class="sub">METAR(実況)・TAF(予報) — データ提供: NOAA Aviation Weather Center Data API</div>
+  <div class="notice">
+    <span class="icon">⚠️</span>
+    <span>純粋な自衛隊基地(千歳・厚木・下総・入間・浜松・築城・新田原・鹿屋など)は、2011年10月以降METAR/TAFを国際気象配信網へ流していないため、原則として表示されません。米軍基地(横田・嘉手納・普天間)と軍民共用空港(三沢・岩国・百里・小松・美保・徳島など)は表示対象です。</span>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="searchBox" placeholder="ICAOコード / 空港名で検索 (例: RJTT, 羽田, Narita)">
+    <select id="regionSelect">
+      <option value="all">全エリア</option>
+      <option value="北海道">北海道</option>
+      <option value="東北">東北</option>
+      <option value="関東">関東</option>
+      <option value="中部">中部</option>
+      <option value="関西">関西</option>
+      <option value="中国">中国</option>
+      <option value="四国">四国</option>
+      <option value="九州">九州</option>
+      <option value="沖縄">沖縄</option>
+    </select>
+    <select id="sortSelect">
+      <option value="severity">悪天候順(LIFR→VFR)</option>
+      <option value="icao">ICAOコード順</option>
+      <option value="name">空港名順</option>
+    </select>
+    <button id="refreshBtn">🔄 今すぐ更新</button>
+    <button id="clearCacheBtn" class="secondary">キャッシュ削除</button>
+  </div>
+  <div class="status-line">
+    <span>最終更新: <strong id="lastUpdated">未取得</strong></span>
+    <span>次回自動更新まで: <strong id="countdown">--:--</strong></span>
+    <span>観測地点数: <strong id="stationCount">0</strong></span>
+  </div>
+  <div id="errorBanner"></div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--vfr)"></i>VFR (良好)</span>
+    <span><i class="dot" style="background:var(--mvfr)"></i>MVFR (やや不良)</span>
+    <span><i class="dot" style="background:var(--ifr)"></i>IFR (不良)</span>
+    <span><i class="dot" style="background:var(--lifr)"></i>LIFR (非常に不良)</span>
+    <span><i class="dot" style="background:var(--unk)"></i>不明</span>
+  </div>
+</header>
+
+<main>
+  <div id="grid"></div>
+</main>
+
+<footer>
+  データ取得元: <a href="https://aviationweather.gov/data/api" target="_blank" rel="noopener">aviationweather.gov Data API</a>
+  (CORS回避のため <a href="https://corsproxy.io" target="_blank" rel="noopener">corsproxy.io</a> 等のプロキシ経由) ·
+  1分ごとに自動更新(METARは通常1時間ごとの発表のため、内容が変わるのは主に急変時のSPECI発表時) · ブラウザのlocalStorageに直近データをキャッシュ<br>
+  ※ 自衛隊基地(千歳・厚木・下総・入間・浜松・築城・新田原・鹿屋など19基地)は2011年10月以降METAR/TAFの国際配信を原則停止しており、通常は表示されません。
+  ただし稀に配信されることがあるため(下総は2026年も散発配信を確認)、リクエスト対象に含めており、データが流れた時のみカードが自動表示されます。
+  米軍基地(横田・嘉手納・普天間)と軍民共用空港(三沢・岩国・百里・小松・美保など)は常時表示対象です。
+</footer>
+
+<script>
+(() => {
+  // NOAA(aviationweather.gov)でMETARの配信が確認できた日本の全75地点。
+  // bbox(矩形範囲)指定だと成田・関空などが欠落するため、ICAOコードを明示指定する。
+  // 純粋な自衛隊基地(千歳/入間/浜松/築城/新田原/鹿屋など)は国際配信網に
+  // METAR/TAFを流していないためこのAPIでは取得不可(RJCJ,RJTJ,RJNH,RJFZ,RJFN,RJFY等は確認済み)。
+  // mil: "米軍" = 米軍基地, "共用" = 軍民共用空港
+  const STATIONS = {
+    // 北海道
+    RJCB: { region: "北海道", jp: "帯広空港" },
+    RJCC: { region: "北海道", jp: "新千歳空港" },
+    RJCH: { region: "北海道", jp: "函館空港" },
+    RJCK: { region: "北海道", jp: "釧路空港" },
+    RJCM: { region: "北海道", jp: "女満別空港" },
+    RJCN: { region: "北海道", jp: "中標津空港" },
+    RJCO: { region: "北海道", jp: "札幌丘珠空港", mil: "共用" },
+    RJCW: { region: "北海道", jp: "稚内空港" },
+    RJEB: { region: "北海道", jp: "オホーツク紋別空港" },
+    RJEC: { region: "北海道", jp: "旭川空港" },
+    // 東北
+    RJSA: { region: "東北", jp: "青森空港" },
+    RJSC: { region: "東北", jp: "山形空港" },
+    RJSF: { region: "東北", jp: "福島空港" },
+    RJSI: { region: "東北", jp: "いわて花巻空港" },
+    RJSK: { region: "東北", jp: "秋田空港" },
+    RJSM: { region: "東北", jp: "三沢基地(三沢空港)", mil: "共用" },
+    RJSR: { region: "東北", jp: "大館能代空港" },
+    RJSS: { region: "東北", jp: "仙台空港" },
+    RJSY: { region: "東北", jp: "庄内空港" },
+    // 関東
+    RJAA: { region: "関東", jp: "成田国際空港" },
+    RJTT: { region: "関東", jp: "東京国際空港(羽田)" },
+    RJTO: { region: "関東", jp: "大島空港" },
+    RJAH: { region: "関東", jp: "茨城空港(百里基地)", mil: "共用" },
+    RJTF: { region: "関東", jp: "調布飛行場" },
+    RJTY: { region: "関東", jp: "横田基地", mil: "米軍" },
+    // 中部
+    RJAF: { region: "中部", jp: "松本空港" },
+    RJGG: { region: "中部", jp: "中部国際空港(セントレア)" },
+    RJNK: { region: "中部", jp: "小松空港(小松基地)", mil: "共用" },
+    RJNS: { region: "中部", jp: "静岡空港" },
+    RJNT: { region: "中部", jp: "富山空港" },
+    RJNW: { region: "中部", jp: "能登空港" },
+    RJSN: { region: "中部", jp: "新潟空港" },
+    // 関西
+    RJBB: { region: "関西", jp: "関西国際空港" },
+    RJBD: { region: "関西", jp: "南紀白浜空港" },
+    RJBE: { region: "関西", jp: "神戸空港" },
+    RJBT: { region: "関西", jp: "但馬空港" },
+    RJOO: { region: "関西", jp: "大阪国際空港(伊丹)" },
+    RJOY: { region: "関西", jp: "八尾空港" },
+    // 中国
+    RJDC: { region: "中国", jp: "山口宇部空港" },
+    RJOA: { region: "中国", jp: "広島空港" },
+    RJOB: { region: "中国", jp: "岡山空港" },
+    RJOC: { region: "中国", jp: "出雲空港" },
+    RJOH: { region: "中国", jp: "米子空港(美保基地)", mil: "共用" },
+    RJOI: { region: "中国", jp: "岩国基地(岩国空港)", mil: "共用" },
+    RJOR: { region: "中国", jp: "鳥取空港" },
+    RJOW: { region: "中国", jp: "萩・石見空港" },
+    // 四国
+    RJOK: { region: "四国", jp: "高知空港" },
+    RJOM: { region: "四国", jp: "松山空港" },
+    RJOS: { region: "四国", jp: "徳島空港(徳島基地)", mil: "共用" },
+    RJOT: { region: "四国", jp: "高松空港" },
+    // 九州
+    RJDT: { region: "九州", jp: "対馬空港" },
+    RJFE: { region: "九州", jp: "福江空港" },
+    RJFF: { region: "九州", jp: "福岡空港" },
+    RJFG: { region: "九州", jp: "種子島空港" },
+    RJFK: { region: "九州", jp: "鹿児島空港" },
+    RJFM: { region: "九州", jp: "宮崎空港" },
+    RJFO: { region: "九州", jp: "大分空港" },
+    RJFR: { region: "九州", jp: "北九州空港" },
+    RJFS: { region: "九州", jp: "佐賀空港" },
+    RJFT: { region: "九州", jp: "熊本空港" },
+    RJFU: { region: "九州", jp: "長崎空港" },
+    RJKA: { region: "九州", jp: "奄美空港" },
+    RJKB: { region: "九州", jp: "沖永良部空港" },
+    RJKI: { region: "九州", jp: "喜界空港" },
+    // 沖縄
+    ROAH: { region: "沖縄", jp: "那覇空港" },
+    RODN: { region: "沖縄", jp: "嘉手納基地", mil: "米軍" },
+    ROIG: { region: "沖縄", jp: "新石垣空港" },
+    ROMD: { region: "沖縄", jp: "南大東空港" },
+    ROMY: { region: "沖縄", jp: "宮古空港" },
+    RORK: { region: "沖縄", jp: "北大東空港" },
+    RORS: { region: "沖縄", jp: "下地島空港" },
+    RORT: { region: "沖縄", jp: "多良間空港" },
+    RORY: { region: "沖縄", jp: "与論空港" },
+    ROTM: { region: "沖縄", jp: "普天間基地", mil: "米軍" },
+    ROYN: { region: "沖縄", jp: "与那国空港" },
+    // --- 自衛隊基地(2011年10月以降、国際配信網へのMETAR配信を原則停止) ---
+    // 常時データは無いが、まれに配信されることがある(下総は2026年も散発配信を確認)。
+    // データが流れた時だけカードが自動表示される「機会主義的」リクエスト対象。
+    RJCJ: { region: "北海道", jp: "千歳基地", mil: "自衛隊" },
+    RJSH: { region: "東北", jp: "八戸航空基地", mil: "自衛隊" },
+    RJST: { region: "東北", jp: "松島基地", mil: "自衛隊" },
+    RJSU: { region: "東北", jp: "霞目駐屯地", mil: "自衛隊" },
+    RJTA: { region: "関東", jp: "厚木航空基地", mil: "自衛隊" },
+    RJTJ: { region: "関東", jp: "入間基地", mil: "自衛隊" },
+    RJTK: { region: "関東", jp: "木更津駐屯地", mil: "自衛隊" },
+    RJTL: { region: "関東", jp: "下総航空基地", mil: "自衛隊" },
+    RJTU: { region: "関東", jp: "宇都宮駐屯地", mil: "自衛隊" },
+    RJTE: { region: "関東", jp: "館山航空基地", mil: "自衛隊" },
+    RJNG: { region: "中部", jp: "岐阜基地", mil: "自衛隊" },
+    RJNH: { region: "中部", jp: "浜松基地", mil: "自衛隊" },
+    RJNY: { region: "中部", jp: "静浜基地", mil: "自衛隊" },
+    RJOF: { region: "中国", jp: "防府北基地", mil: "自衛隊" },
+    RJDM: { region: "九州", jp: "目達原駐屯地", mil: "自衛隊" },
+    RJFA: { region: "九州", jp: "芦屋基地", mil: "自衛隊" },
+    RJFN: { region: "九州", jp: "新田原基地", mil: "自衛隊" },
+    RJFY: { region: "九州", jp: "鹿屋航空基地", mil: "自衛隊" },
+    RJFZ: { region: "九州", jp: "築城基地", mil: "自衛隊" },
+  };
+  const IDS = Object.keys(STATIONS).join(",");
+  const REFRESH_MS = 1 * 60 * 1000;
+  const CACHE_KEY = "metarTafJapanCache_v3";
+
+  // corsproxy.io は長いURL(75空港分)でも安定して通ることを確認済み。
+  // allorigins は長いURLで5xxを返すことがあるため予備扱い。
+  const PROXIES = [
+    (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const grid = $("grid");
+  const errorBanner = $("errorBanner");
+  const refreshBtn = $("refreshBtn");
+  const clearCacheBtn = $("clearCacheBtn");
+  const searchBox = $("searchBox");
+  const sortSelect = $("sortSelect");
+  const regionSelect = $("regionSelect");
+
+  let records = [];
+  let nextRefreshAt = 0;
+  let countdownTimer = null;
+
+  const SEVERITY = { LIFR: 0, IFR: 1, MVFR: 2, VFR: 3, UNK: 4 };
+
+  function showError(msg) {
+    errorBanner.style.display = "block";
+    errorBanner.textContent = msg;
+  }
+  function clearError() {
+    errorBanner.style.display = "none";
+    errorBanner.textContent = "";
+  }
+
+  // プロキシがハングすることがあるため、1リクエストあたり10秒で打ち切って次に進む
+  async function fetchWithTimeout(url, ms = 10000) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try {
+      const res = await fetch(url, { cache: "no-store", signal: ctl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      throw (e.name === "AbortError") ? new Error("タイムアウト(10秒)") : e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function fetchJsonWithFallback(url) {
+    const errors = [];
+    for (const wrap of PROXIES) {
+      try {
+        return await fetchWithTimeout(wrap(url));
+      } catch (e) {
+        errors.push(e.message);
+      }
+    }
+    throw new Error(`全プロキシ失敗: ${errors.join(" / ")}`);
+  }
+
+  // 一括URL(75地点分)が全プロキシで失敗した場合、15地点ずつに分割して再試行する。
+  // allorigins は長いURLだと5xxを返すことがあるため、分割すれば通る可能性が高い。
+  async function fetchStationsData(kind) {
+    const base = (ids) => `https://aviationweather.gov/api/data/${kind}?ids=${ids}&format=json`;
+    try {
+      return await fetchJsonWithFallback(base(IDS));
+    } catch (eFull) {
+      const all = Object.keys(STATIONS);
+      const chunks = [];
+      for (let i = 0; i < all.length; i += 15) chunks.push(all.slice(i, i + 15).join(","));
+      const results = await Promise.allSettled(chunks.map((c) => fetchJsonWithFallback(base(c))));
+      const ok = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
+      if (!ok.length) throw eFull;
+      return ok;
+    }
+  }
+
+  function cloudsToText(clouds) {
+    if (!clouds || !clouds.length) return "情報なし";
+    return clouds
+      .filter(c => c.cover && c.cover !== "SKC" && c.cover !== "CLR")
+      .map(c => `${c.cover}${c.base != null ? c.base : ""}`)
+      .join(", ") || "快晴";
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return "-";
+    try {
+      return new Date(iso).toLocaleString("ja-JP", {
+        timeZone: "Asia/Tokyo", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit"
+      }) + " JST";
+    } catch { return iso; }
+  }
+  function fmtUnix(sec) {
+    if (!sec) return "-";
+    return fmtTime(new Date(sec * 1000).toISOString());
+  }
+
+  function mergeData(metars, tafs) {
+    const byIcao = new Map();
+    for (const m of metars) {
+      if (!STATIONS[m.icaoId]) continue;
+      byIcao.set(m.icaoId, { icaoId: m.icaoId, name: m.name, metar: m, taf: null });
+    }
+    for (const t of tafs) {
+      if (!STATIONS[t.icaoId]) continue;
+      const existing = byIcao.get(t.icaoId);
+      if (existing) existing.taf = t;
+      else byIcao.set(t.icaoId, { icaoId: t.icaoId, name: t.name, metar: null, taf: t });
+    }
+    const list = Array.from(byIcao.values());
+    for (const rec of list) {
+      const st = STATIONS[rec.icaoId];
+      rec.region = st.region;
+      rec.jpName = st.jp;
+      rec.mil = st.mil || null;
+    }
+    return list;
+  }
+
+  function renderCard(rec) {
+    const m = rec.metar;
+    const t = rec.taf;
+    const cat = (m && m.fltCat) ? m.fltCat : "UNK";
+    const name = rec.jpName || (rec.name || m?.name || t?.name || rec.icaoId || "").replace(/,\s*\d+,\s*JP$/, ", 日本");
+    const milBadge = rec.mil ? ` <span class="badge" style="background:#8a6d3b;color:#fff">${rec.mil}</span>` : "";
+
+    const factsHtml = m ? `
+      <div class="facts">
+        <div>風向風速: <b>${m.wdir ?? "-"}° / ${m.wspd ?? "-"}kt</b></div>
+        <div>視程: <b>${m.visib ?? "-"} SM</b></div>
+        <div>気温/露点: <b>${m.temp ?? "-"}°C / ${m.dewp ?? "-"}°C</b></div>
+        <div>気圧: <b>${m.altim ?? "-"} hPa</b></div>
+        <div style="grid-column:1/-1">雲: <b>${cloudsToText(m.clouds)}</b></div>
+        <div style="grid-column:1/-1">観測時刻: <b>${fmtTime(m.reportTime)}</b></div>
+      </div>
+    ` : `<div class="facts"><div style="grid-column:1/-1;color:var(--muted)">METAR未取得</div></div>`;
+
+    const metarRaw = m ? `<div class="section-label">METAR(実況)</div><div class="raw">${m.rawOb}</div>` : "";
+    const tafRaw = t
+      ? `<div class="section-label">TAF(予報) 有効: ${fmtUnix(t.validTimeFrom)} 〜 ${fmtUnix(t.validTimeTo)}</div><div class="raw">${t.rawTAF}</div>`
+      : `<div class="section-label">TAF(予報)</div><div class="raw" style="color:var(--muted)">この地点のTAFは発表されていません</div>`;
+
+    return `
+      <div class="card ${cat}" data-icao="${rec.icaoId}" data-name="${name.toLowerCase()}">
+        <div class="card-head">
+          <div>
+            <div class="icao">${rec.icaoId}</div>
+            <div class="name">${name}</div>
+            <div class="name" style="opacity:0.7">${rec.region || "不明"}</div>
+          </div>
+          <span><span class="badge ${cat}">${cat}</span>${milBadge}</span>
+        </div>
+        ${factsHtml}
+        ${metarRaw}
+        ${tafRaw}
+      </div>
+    `;
+  }
+
+  function applyFilterSort() {
+    const q = searchBox.value.trim().toLowerCase();
+    const sortMode = sortSelect.value;
+    const region = regionSelect.value;
+
+    let filtered = records.filter(r => {
+      if (region !== "all" && r.region !== region) return false;
+      if (!q) return true;
+      return r.icaoId.toLowerCase().includes(q)
+        || (r.name || "").toLowerCase().includes(q)
+        || (r.jpName || "").includes(searchBox.value.trim());
+    });
+
+    filtered.sort((a, b) => {
+      if (sortMode === "icao") return a.icaoId.localeCompare(b.icaoId);
+      if (sortMode === "name") return (a.name || "").localeCompare(b.name || "");
+      // severity
+      const sa = SEVERITY[a.metar?.fltCat || "UNK"];
+      const sb = SEVERITY[b.metar?.fltCat || "UNK"];
+      if (sa !== sb) return sa - sb;
+      return a.icaoId.localeCompare(b.icaoId);
+    });
+
+    if (!filtered.length) {
+      grid.innerHTML = `<div class="empty-state">該当する観測地点が見つかりません</div>`;
+      return;
+    }
+    grid.innerHTML = filtered.map(renderCard).join("");
+  }
+
+  function saveCache() {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), records }));
+    } catch (e) { /* storage full/unavailable - ignore */ }
+  }
+
+  function loadCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+
+  function updateStatusUI(fromCacheTime) {
+    $("lastUpdated").textContent = fromCacheTime
+      ? new Date(fromCacheTime).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) + " JST"
+      : "未取得";
+    $("stationCount").textContent = String(records.length);
+  }
+
+  function startCountdown() {
+    nextRefreshAt = Date.now() + REFRESH_MS;
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = setInterval(() => {
+      const remain = Math.max(0, nextRefreshAt - Date.now());
+      const mm = String(Math.floor(remain / 60000)).padStart(2, "0");
+      const ss = String(Math.floor((remain % 60000) / 1000)).padStart(2, "0");
+      $("countdown").textContent = `${mm}:${ss}`;
+    }, 1000);
+  }
+
+  async function refresh(isAuto = false) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = "取得中...";
+    try {
+      const [metars, tafs] = await Promise.all([
+        fetchStationsData("metar"),
+        fetchStationsData("taf"),
+      ]);
+      const fresh = mergeData(metars, tafs);
+      // 分割フォールバックで一部の地点しか取れなかった場合、欠けた地点は前回データを残す
+      const freshIds = new Set(fresh.map((r) => r.icaoId));
+      const kept = records.filter((r) => !freshIds.has(r.icaoId));
+      records = fresh.concat(kept);
+      const savedAt = Date.now();
+      saveCache();
+      updateStatusUI(savedAt);
+      applyFilterSort();
+      if (kept.length) {
+        showError(`${kept.length}地点は今回取得できなかったため前回データを表示しています(取得成功: ${fresh.length}地点)。`);
+      } else {
+        clearError();
+      }
+    } catch (e) {
+      showError(`データ取得に失敗しました(${e.message})。前回取得分のデータを表示しています。しばらくして再試行してください。`);
+    } finally {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = "🔄 今すぐ更新";
+      startCountdown();
+    }
+  }
+
+  refreshBtn.addEventListener("click", () => refresh(false));
+  clearCacheBtn.addEventListener("click", () => {
+    localStorage.removeItem(CACHE_KEY);
+    records = [];
+    grid.innerHTML = `<div class="empty-state">キャッシュを削除しました。「今すぐ更新」で再取得してください。</div>`;
+    updateStatusUI(null);
+  });
+  searchBox.addEventListener("input", applyFilterSort);
+  sortSelect.addEventListener("change", applyFilterSort);
+  regionSelect.addEventListener("change", applyFilterSort);
+
+  // 初期表示: キャッシュがあればすぐ表示してから最新データを取得
+  const cached = loadCache();
+  if (cached && Array.isArray(cached.records) && cached.records.length) {
+    records = cached.records;
+    updateStatusUI(cached.savedAt);
+    applyFilterSort();
+  } else {
+    grid.innerHTML = `<div class="loading-state">データを取得しています...</div>`;
+  }
+
+  refresh(true);
+  setInterval(() => refresh(true), REFRESH_MS);
+})();
+</script>
+
+</body>
+</html>
