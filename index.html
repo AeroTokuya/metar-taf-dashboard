@@ -405,8 +405,22 @@
     if (!clouds || !clouds.length) return "情報なし";
     return clouds
       .filter(c => c.cover && c.cover !== "SKC" && c.cover !== "CLR")
-      .map(c => `${c.cover}${c.base != null ? c.base : ""}`)
+      .map(c => `${c.cover}${c.base != null ? " " + c.base + "ft" : ""}`)
       .join(", ") || "快晴";
+  }
+
+  // APIの視程(スタチュートマイル)をキロメートル表記に変換する。
+  // 10km以上(rawの9999)はAPIが "6+" SM として返すため「10km以上」と表示。
+  function visibToKm(visib) {
+    if (visib == null || visib === "") return "-";
+    const s = String(visib).trim();
+    const plus = s.includes("+");
+    const num = parseFloat(s);
+    if (isNaN(num)) return s;
+    if (plus && num <= 6) return "10km以上";
+    const km = num * 1.60934;
+    const kmStr = km >= 10 ? Math.round(km) + "km" : (Math.round(km * 10) / 10) + "km";
+    return plus ? kmStr + "以上" : kmStr;
   }
 
   function fmtTime(iso) {
@@ -455,9 +469,9 @@
     const factsHtml = m ? `
       <div class="facts">
         <div>風向風速: <b>${m.wdir ?? "-"}° / ${m.wspd ?? "-"}kt</b></div>
-        <div>視程: <b>${m.visib ?? "-"} SM</b></div>
+        <div>視程: <b>${visibToKm(m.visib)}</b></div>
         <div>気温/露点: <b>${m.temp ?? "-"}°C / ${m.dewp ?? "-"}°C</b></div>
-        <div>気圧: <b>${m.altim ?? "-"} hPa</b></div>
+        <div>QNH: <b>${m.altim != null ? Math.round(m.altim) + " hPa" : "-"}</b></div>
         <div style="grid-column:1/-1">雲: <b>${cloudsToText(m.clouds)}</b></div>
         <div style="grid-column:1/-1">観測時刻: <b>${fmtTime(m.reportTime)}</b></div>
       </div>
