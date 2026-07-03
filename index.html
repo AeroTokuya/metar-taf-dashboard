@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>日本 航空気象ダッシュボード | METAR / TAF</title>
+<title>日本のMETAR/TAF</title>
 <style>
   :root {
     --bg: #0f1420;
@@ -159,7 +159,7 @@
 <footer>
   データ取得元: <a href="https://aviationweather.gov/data/api" target="_blank" rel="noopener">aviationweather.gov Data API</a>
   (CORS回避のため <a href="https://corsproxy.io" target="_blank" rel="noopener">corsproxy.io</a> 等のプロキシ経由) ·
-  1分ごとに自動更新(METARは通常1時間ごとの発表のため、内容が変わるのは主に急変時のSPECI発表時) · ブラウザのlocalStorageに直近データをキャッシュ<br>
+  10分ごとに自動更新(METARは通常1時間ごとの発表) · ブラウザのlocalStorageに直近データをキャッシュ<br>
   ※ 自衛隊基地(千歳・厚木・下総・入間・浜松・築城・新田原・鹿屋など19基地)は2011年10月以降METAR/TAFの国際配信を原則停止しており、通常は表示されません。
   ただし稀に配信されることがあるため(下総は2026年も散発配信を確認)、リクエスト対象に含めており、データが流れた時のみカードが自動表示されます。
   米軍基地(横田・嘉手納・普天間)と軍民共用空港(三沢・岩国・百里・小松・美保など)は常時表示対象です。
@@ -281,7 +281,7 @@
     RJFZ: { region: "九州", jp: "築城基地", mil: "自衛隊" },
   };
   const IDS = Object.keys(STATIONS).join(",");
-  const REFRESH_MS = 1 * 60 * 1000;
+  const REFRESH_MS = 10 * 60 * 1000;
   const CACHE_KEY = "metarTafJapanCache_v3";
 
   // corsproxy.io は長いURL(75空港分)でも安定して通ることを確認済み。
