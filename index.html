@@ -37,9 +37,17 @@
   .notice {
     margin-top: 10px; padding: 9px 14px; border-radius: 8px; font-size: 12.5px; line-height: 1.6;
     background: rgba(138,109,59,0.18); border: 1px solid #8a6d3b; color: #f0e2c4;
-    display: flex; gap: 8px; align-items: flex-start;
   }
+  .notice > summary {
+    cursor: pointer; font-weight: 600; list-style: none;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .notice > summary::-webkit-details-marker { display: none; }
+  .notice[open] > summary { margin-bottom: 6px; }
+  .notice[open] > summary .chev { transform: rotate(90deg); }
+  .notice .chev { margin-left: auto; transition: transform .15s; opacity: .7; }
   .notice .icon { flex: 0 0 auto; }
+  .notice-body { color: #f0e2c4; }
   .toolbar {
     display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
     margin-top: 10px;
@@ -101,6 +109,28 @@
   .empty-state, .loading-state { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
   footer { text-align: center; color: var(--muted); font-size: 11.5px; padding: 20px; }
   footer a { color: var(--accent); }
+
+  /* ===== スマートフォン向け（画面幅600px以下） ===== */
+  @media (max-width: 600px) {
+    /* ヘッダーの固定を解除し、少しスクロールすればカードが全画面に */
+    header { position: static; padding: 11px 12px; }
+    header h1 { font-size: 17px; }
+    header .sub { display: none; }               /* データ提供元はフッターにも記載 */
+    .notice { margin-top: 8px; padding: 8px 11px; font-size: 12px; }
+    .toolbar { gap: 7px; margin-top: 8px; }
+    /* 検索は横幅いっぱい、その他は2列に並べてコンパクトに */
+    #searchBox { flex: 1 1 100%; min-width: 0; width: 100%; }
+    #regionSelect, #sortSelect, #refreshBtn, #clearCacheBtn {
+      flex: 1 1 calc(50% - 4px); min-width: 0;
+    }
+    button { padding: 9px 10px; }
+    .status-line { gap: 8px 14px; font-size: 11.5px; margin-top: 8px; }
+    .legend { padding: 8px 12px 0; gap: 7px 12px; font-size: 11px; }
+    main { padding: 12px 12px 48px; }
+    #grid { grid-template-columns: 1fr; gap: 12px; }  /* 常に1列 */
+    .card { padding: 12px; }
+    footer { padding: 16px 12px; }
+  }
 </style>
 </head>
 <body>
@@ -108,10 +138,10 @@
 <header>
   <h1>🇯🇵 日本のMETAR/TAF</h1>
   <div class="sub">METAR(実況)・TAF(予報) — データ提供: NOAA Aviation Weather Center Data API</div>
-  <div class="notice">
-    <span class="icon">⚠️</span>
-    <span>純粋な自衛隊基地(千歳・厚木・下総・入間・浜松・築城・新田原・鹿屋など)は、2011年10月以降METAR/TAFを国際気象配信網へ流していないため、原則として表示されません。米軍基地(横田・嘉手納・普天間)と軍民共用空港(三沢・岩国・百里・小松・美保・徳島など)は表示対象です。</span>
-  </div>
+  <details class="notice" id="jsdfNotice" open>
+    <summary><span class="icon">⚠️</span> 自衛隊基地の表示について<span class="chev">▶</span></summary>
+    <div class="notice-body">純粋な自衛隊基地(千歳・厚木・下総・入間・浜松・築城・新田原・鹿屋など)は、2011年10月以降METAR/TAFを国際気象配信網へ流していないため、原則として表示されません。米軍基地(横田・嘉手納・普天間)と軍民共用空港(三沢・岩国・百里・小松・美保・徳島など)は表示対象です。</div>
+  </details>
   <div class="toolbar">
     <input type="text" id="searchBox" placeholder="ICAOコード / 空港名で検索 (例: RJTT, 羽田, Narita)">
     <select id="regionSelect">
@@ -296,6 +326,12 @@
   const searchBox = $("searchBox");
   const sortSelect = $("sortSelect");
   const regionSelect = $("regionSelect");
+
+  // スマホでは自衛隊基地の注意書きを初期状態で折りたたむ（省スペース化）
+  if (window.matchMedia("(max-width: 600px)").matches) {
+    const notice = $("jsdfNotice");
+    if (notice) notice.removeAttribute("open");
+  }
 
   let records = [];
   let nextRefreshAt = 0;
