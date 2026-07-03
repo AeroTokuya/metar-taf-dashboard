@@ -12,10 +12,9 @@
     --border: #2b3552;
     --text: #e6ebf5;
     --muted: #8a94ab;
-    --vfr: #2ecc71;
-    --mvfr: #3498db;
-    --ifr: #e74c3c;
-    --lifr: #c471ed;
+    --vmc: #2ecc71;
+    --mvfr: #f1c40f;
+    --imc: #e74c3c;
     --unk: #6b7488;
     --accent: #4fd1c5;
   }
@@ -78,20 +77,18 @@
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
     border-left: 4px solid var(--unk);
   }
-  .card.VFR { border-left-color: var(--vfr); }
+  .card.VMC { border-left-color: var(--vmc); }
   .card.MVFR { border-left-color: var(--mvfr); }
-  .card.IFR { border-left-color: var(--ifr); }
-  .card.LIFR { border-left-color: var(--lifr); }
+  .card.IMC { border-left-color: var(--imc); }
   .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
   .icao { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
   .name { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .badge {
     font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; color: #06201c; white-space: nowrap;
   }
-  .badge.VFR { background: var(--vfr); }
-  .badge.MVFR { background: var(--mvfr); color: #06121f; }
-  .badge.IFR { background: var(--ifr); color: #200606; }
-  .badge.LIFR { background: var(--lifr); color: #1f0620; }
+  .badge.VMC { background: var(--vmc); }
+  .badge.MVFR { background: var(--mvfr); color: #201c06; }
+  .badge.IMC { background: var(--imc); color: #200606; }
   .badge.UNK { background: var(--unk); color: #fff; }
   .facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; font-size: 12px; color: var(--muted); margin: 10px 0; }
   .facts b { color: var(--text); font-weight: 600; }
@@ -130,7 +127,7 @@
       <option value="沖縄">沖縄</option>
     </select>
     <select id="sortSelect">
-      <option value="severity">悪天候順(LIFR→VFR)</option>
+      <option value="severity">悪天候順(IMC→VMC)</option>
       <option value="icao">ICAOコード順</option>
       <option value="name">空港名順</option>
     </select>
@@ -144,10 +141,9 @@
   </div>
   <div id="errorBanner"></div>
   <div class="legend">
-    <span><i class="dot" style="background:var(--vfr)"></i>VFR (良好)</span>
-    <span><i class="dot" style="background:var(--mvfr)"></i>MVFR (やや不良)</span>
-    <span><i class="dot" style="background:var(--ifr)"></i>IFR (不良)</span>
-    <span><i class="dot" style="background:var(--lifr)"></i>LIFR (非常に不良)</span>
+    <span><i class="dot" style="background:var(--vmc)"></i>VMC (有視界)</span>
+    <span><i class="dot" style="background:var(--mvfr)"></i>MVFR (限界)</span>
+    <span><i class="dot" style="background:var(--imc)"></i>IMC (計器)</span>
     <span><i class="dot" style="background:var(--unk)"></i>不明</span>
   </div>
 </header>
@@ -305,7 +301,16 @@
   let nextRefreshAt = 0;
   let countdownTimer = null;
 
-  const SEVERITY = { LIFR: 0, IFR: 1, MVFR: 2, VFR: 3, UNK: 4 };
+  const SEVERITY = { IMC: 0, MVFR: 1, VMC: 2, UNK: 3 };
+
+  // APIの飛行カテゴリ(VFR/MVFR/IFR/LIFR)を、当サイトの区分に正規化する。
+  // VFR→VMC(有視界)、IFR・LIFR→IMC(計器)に統合。MVFRはそのまま。
+  function normalizeCat(fltCat) {
+    if (fltCat === "VFR") return "VMC";
+    if (fltCat === "MVFR") return "MVFR";
+    if (fltCat === "IFR" || fltCat === "LIFR") return "IMC";
+    return "UNK";
+  }
 
   function showError(msg) {
     errorBanner.style.display = "block";
@@ -407,7 +412,7 @@
   function renderCard(rec) {
     const m = rec.metar;
     const t = rec.taf;
-    const cat = (m && m.fltCat) ? m.fltCat : "UNK";
+    const cat = normalizeCat(m && m.fltCat);
     const name = rec.jpName || (rec.name || m?.name || t?.name || rec.icaoId || "").replace(/,\s*\d+,\s*JP$/, ", 日本");
     const milBadge = rec.mil ? ` <span class="badge" style="background:#8a6d3b;color:#fff">${rec.mil}</span>` : "";
 
@@ -461,8 +466,8 @@
       if (sortMode === "icao") return a.icaoId.localeCompare(b.icaoId);
       if (sortMode === "name") return (a.name || "").localeCompare(b.name || "");
       // severity
-      const sa = SEVERITY[a.metar?.fltCat || "UNK"];
-      const sb = SEVERITY[b.metar?.fltCat || "UNK"];
+      const sa = SEVERITY[normalizeCat(a.metar?.fltCat)];
+      const sb = SEVERITY[normalizeCat(b.metar?.fltCat)];
       if (sa !== sb) return sa - sb;
       return a.icaoId.localeCompare(b.icaoId);
     });
